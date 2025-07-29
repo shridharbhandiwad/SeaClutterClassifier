@@ -1,0 +1,44 @@
+{
+  "generation_timestamp": "2025-07-29T12:34:18.069981",
+  "radar_config": {
+    "frequency": 9375000000.0,
+    "pulse_width": 1e-06,
+    "prf": 1000,
+    "antenna_gain": 35,
+    "transmit_power": 25000.0,
+    "noise_figure": 3,
+    "range_resolution": 150,
+    "azimuth_beamwidth": 1.5,
+    "elevation_beamwidth": 20
+  },
+  "environment_config": {
+    "sea_state": 3,
+    "wind_speed": 15,
+    "wave_height": 2.5,
+    "temperature": 15,
+    "humidity": 75,
+    "precipitation": 0
+  },
+  "dataset_stats": {
+    "total_detections": 100000,
+    "clutter_detections": 70000,
+    "target_detections": 30000,
+    "unique_tracks": 70598,
+    "time_span": {
+      "start": "2025-07-29T12:34:17.003351Z",
+      "end": "2025-07-30T12:34:16.439356Z"
+    },
+    "feature_columns": [
+      "TrackID",
+      "Range_m",
+      "Azimuth_deg",
+      "Elevation_deg",
+      "Doppler_ms",
+      "RCS_dBsm",
+      "SNR_dB",
+      "Timestamp",
+      "Label"
+    ],
+    "memory_usage_mb": 23.25070571899414
+  }
+}
