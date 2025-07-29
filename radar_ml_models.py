@@ -167,7 +167,8 @@ class RadarTargetClassifier:
         self.is_fitted = False
         
     def train_models(self, df: pd.DataFrame, test_size: float = 0.2, 
-                    random_state: int = 42) -> Dict[str, Any]:
+                    random_state: int = 42, n_jobs: int = -1, 
+                    low_memory: bool = False) -> Dict[str, Any]:
         """Train both XGBoost and Random Forest models"""
         
         print("Preparing features...")
@@ -192,13 +193,13 @@ class RadarTargetClassifier:
         
         # Train XGBoost
         print("\nTraining XGBoost model...")
-        xgb_model = self._train_xgboost(X_train_scaled, y_train, X_test_scaled, y_test)
+        xgb_model = self._train_xgboost(X_train_scaled, y_train, X_test_scaled, y_test, n_jobs, low_memory)
         self.models['xgboost'] = xgb_model
         results['xgboost'] = self._evaluate_model(xgb_model, X_test_scaled, y_test, 'XGBoost')
         
         # Train Random Forest
         print("\nTraining Random Forest model...")
-        rf_model = self._train_random_forest(X_train, y_train, X_test, y_test)  # RF doesn't need scaling
+        rf_model = self._train_random_forest(X_train, y_train, X_test, y_test, n_jobs, low_memory)  # RF doesn't need scaling
         self.models['random_forest'] = rf_model
         results['random_forest'] = self._evaluate_model(rf_model, X_test, y_test, 'Random Forest')
         
@@ -215,17 +216,28 @@ class RadarTargetClassifier:
         return results
     
     def _train_xgboost(self, X_train: np.ndarray, y_train: np.ndarray, 
-                      X_test: np.ndarray, y_test: np.ndarray) -> xgb.XGBClassifier:
+                      X_test: np.ndarray, y_test: np.ndarray, n_jobs: int = -1, 
+                      low_memory: bool = False) -> xgb.XGBClassifier:
         """Train XGBoost model with hyperparameter tuning"""
         
         # Define parameter grid for GridSearch
-        param_grid = {
-            'max_depth': [3, 5, 7],
-            'learning_rate': [0.01, 0.1, 0.2],
-            'n_estimators': [100, 200, 300],
-            'subsample': [0.8, 0.9, 1.0],
-            'colsample_bytree': [0.8, 0.9, 1.0]
-        }
+        if low_memory:
+            # Minimal hyperparameter search for memory-constrained environments
+            param_grid = {
+                'max_depth': [3, 5],
+                'learning_rate': [0.1],
+                'n_estimators': [100, 200],
+                'subsample': [0.8],
+                'colsample_bytree': [0.8]
+            }
+        else:
+            param_grid = {
+                'max_depth': [3, 5, 7],
+                'learning_rate': [0.01, 0.1, 0.2],
+                'n_estimators': [100, 200, 300],
+                'subsample': [0.8, 0.9, 1.0],
+                'colsample_bytree': [0.8, 0.9, 1.0]
+            }
         
         # Create XGBoost classifier
         xgb_model = xgb.XGBClassifier(
@@ -236,9 +248,10 @@ class RadarTargetClassifier:
         
         # Grid search with cross-validation
         print("Performing hyperparameter tuning for XGBoost...")
+        cv_folds = 2 if low_memory else 3
         grid_search = GridSearchCV(
-            xgb_model, param_grid, cv=3, scoring='f1', 
-            n_jobs=-1, verbose=1
+            xgb_model, param_grid, cv=cv_folds, scoring='f1', 
+            n_jobs=n_jobs, verbose=1
         )
         
         grid_search.fit(X_train, y_train)
@@ -248,26 +261,38 @@ class RadarTargetClassifier:
         return grid_search.best_estimator_
     
     def _train_random_forest(self, X_train: np.ndarray, y_train: np.ndarray,
-                           X_test: np.ndarray, y_test: np.ndarray) -> RandomForestClassifier:
+                           X_test: np.ndarray, y_test: np.ndarray, n_jobs: int = -1,
+                           low_memory: bool = False) -> RandomForestClassifier:
         """Train Random Forest model with hyperparameter tuning"""
         
         # Define parameter grid for GridSearch
-        param_grid = {
-            'n_estimators': [100, 200, 300],
-            'max_depth': [5, 10, 15, None],
-            'min_samples_split': [2, 5, 10],
-            'min_samples_leaf': [1, 2, 4],
-            'max_features': ['sqrt', 'log2', None]
-        }
+        if low_memory:
+            # Minimal hyperparameter search for memory-constrained environments
+            param_grid = {
+                'n_estimators': [100, 200],
+                'max_depth': [5, 10],
+                'min_samples_split': [2, 5],
+                'min_samples_leaf': [1, 2],
+                'max_features': ['sqrt']
+            }
+        else:
+            param_grid = {
+                'n_estimators': [100, 200, 300],
+                'max_depth': [5, 10, 15, None],
+                'min_samples_split': [2, 5, 10],
+                'min_samples_leaf': [1, 2, 4],
+                'max_features': ['sqrt', 'log2', None]
+            }
         
         # Create Random Forest classifier
-        rf_model = RandomForestClassifier(random_state=42, n_jobs=-1)
+        rf_model = RandomForestClassifier(random_state=42, n_jobs=n_jobs)
         
         # Grid search with cross-validation
         print("Performing hyperparameter tuning for Random Forest...")
+        cv_folds = 2 if low_memory else 3
         grid_search = GridSearchCV(
-            rf_model, param_grid, cv=3, scoring='f1',
-            n_jobs=-1, verbose=1
+            rf_model, param_grid, cv=cv_folds, scoring='f1',
+            n_jobs=n_jobs, verbose=1
         )
         
         grid_search.fit(X_train, y_train)
