@@ -357,7 +357,7 @@ class RadarDatasetGenerator:
         complete_df = pd.concat([clutter_df, target_df], ignore_index=True)
         
         # Sort by timestamp
-        complete_df['Timestamp_dt'] = pd.to_datetime(complete_df['Timestamp'])
+        complete_df['Timestamp_dt'] = pd.to_datetime(complete_df['Timestamp'], format='ISO8601')
         complete_df = complete_df.sort_values('Timestamp_dt').drop('Timestamp_dt', axis=1)
         complete_df = complete_df.reset_index(drop=True)
         
