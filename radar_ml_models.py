@@ -27,7 +27,7 @@ class RadarFeatureEngineering:
         
         # Convert timestamp to datetime if it's not already
         if 'Timestamp' in df_features.columns:
-            df_features['Timestamp_dt'] = pd.to_datetime(df_features['Timestamp'])
+            df_features['Timestamp_dt'] = pd.to_datetime(df_features['Timestamp'], format='ISO8601')
             
             # Time-based features
             df_features['Hour'] = df_features['Timestamp_dt'].dt.hour
