@@ -367,15 +367,30 @@ class RadarDatasetGenerator:
         
         return complete_df
     
-    def save_dataset(self, dataset: pd.DataFrame, filename: str):
-        """Save dataset to file"""
-        if filename.endswith('.parquet'):
-            dataset.to_parquet(filename, compression='gzip')
-        elif filename.endswith('.csv'):
-            dataset.to_csv(filename, index=False)
-        else:
-            # Default to parquet for better compression
-            dataset.to_parquet(filename + '.parquet', compression='gzip')
+    def save_dataset(self, dataset: pd.DataFrame, filename: str, compression: str = 'gzip'):
+        """Save dataset to file with specified compression"""
+        try:
+            if filename.endswith('.parquet'):
+                dataset.to_parquet(filename, compression=compression)
+            elif filename.endswith('.csv'):
+                dataset.to_csv(filename, index=False)
+            else:
+                # Default to parquet for better compression
+                dataset.to_parquet(filename + '.parquet', compression=compression)
+        except OSError as e:
+            if "No space left on device" in str(e):
+                print(f"❌ Disk space error: {e}")
+                print("💡 Try using --low-memory mode or free up disk space")
+                # Try saving with maximum compression
+                try:
+                    print("🔄 Attempting to save with maximum compression...")
+                    dataset.to_parquet(filename + '.parquet', compression='brotli')
+                    print("✅ Saved with brotli compression")
+                except Exception as e2:
+                    print(f"❌ Failed even with maximum compression: {e2}")
+                    raise e
+            else:
+                raise e
         
         # Save metadata
         metadata = {

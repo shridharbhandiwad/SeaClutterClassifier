@@ -23,12 +23,24 @@ import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
 import warnings
+import gc
+import psutil
 warnings.filterwarnings('ignore')
 
 # Import our custom modules
 from radar_data_generator import RadarDatasetGenerator, RadarConfig, EnvironmentConfig
 from radar_ml_models import RadarTargetClassifier, cross_validate_models
 
+
+def get_memory_usage():
+    """Get current memory usage in GB"""
+    process = psutil.Process(os.getpid())
+    memory_info = process.memory_info()
+    return memory_info.rss / (1024 ** 3)  # Convert to GB
+
+def free_memory():
+    """Force garbage collection to free memory"""
+    gc.collect()
 
 class DatasetSplitter:
     """Utility class for creating proper train/validation/test splits"""
@@ -129,7 +141,7 @@ def generate_datasets(config):
         print(f"\n📡 Generating main dataset ({config.main_size_gb:.1f} GB)...")
         main_generator = RadarDatasetGenerator()
         main_dataset = main_generator.generate_complete_dataset(target_size_gb=config.main_size_gb)
-        main_generator.save_dataset(main_dataset, "maritime_radar_dataset_main")
+        main_generator.save_dataset(main_dataset, "maritime_radar_dataset_main", compression=config.compression)
         datasets['main'] = main_dataset
         print(f"✅ Main dataset generated: {len(main_dataset):,} samples")
     
@@ -142,7 +154,7 @@ def generate_datasets(config):
             env_config = EnvironmentConfig(sea_state=sea_state)
             generator = RadarDatasetGenerator(env_config=env_config)
             dataset = generator.generate_complete_dataset(target_size_gb=config.sea_state_size_gb)
-            generator.save_dataset(dataset, f"maritime_radar_dataset_sea_state_{sea_state}")
+            generator.save_dataset(dataset, f"maritime_radar_dataset_sea_state_{sea_state}", compression=config.compression)
             datasets[f'sea_state_{sea_state}'] = dataset
             print(f"  ✅ Sea state {sea_state} dataset: {len(dataset):,} samples")
     
@@ -157,6 +169,8 @@ def train_models(config):
     print("="*60)
     
     # Load or use generated dataset
+    print(f"💾 Memory usage before loading: {get_memory_usage():.2f} GB")
+    
     if config.dataset_path:
         print(f"\n📁 Loading dataset from {config.dataset_path}")
         if config.dataset_path.endswith('.parquet'):
@@ -169,6 +183,12 @@ def train_models(config):
     
     print(f"Dataset loaded: {len(df):,} samples")
     print(f"Class distribution: {df['Label'].value_counts().to_dict()}")
+    print(f"💾 Memory usage after loading: {get_memory_usage():.2f} GB")
+    
+    # Free memory if in low memory mode
+    if hasattr(config, 'low_memory') and config.low_memory:
+        free_memory()
+        print(f"💾 Memory usage after cleanup: {get_memory_usage():.2f} GB")
     
     # Create dataset splits
     splitter = DatasetSplitter(
@@ -194,7 +214,9 @@ def train_models(config):
     results = classifier.train_models(
         train_val_df, 
         test_size=len(test_df)/(len(train_val_df) + len(test_df)),  # Use test_df size as test proportion
-        random_state=config.random_state
+        random_state=config.random_state,
+        n_jobs=config.n_jobs,
+        low_memory=config.low_memory
     )
     training_time = time.time() - start_time
     
@@ -399,6 +421,17 @@ def main():
                        help="Quick training (small dataset, no CV)")
     parser.add_argument("--full", action="store_true",
                        help="Full training pipeline (generate data + train)")
+    parser.add_argument("--low-memory", action="store_true",
+                       help="Low memory mode (minimal hyperparameter tuning, chunked processing)")
+    
+    # Memory optimization options
+    parser.add_argument("--n-jobs", type=int, default=-1,
+                       help="Number of parallel jobs (-1 for all cores, 1 for single core)")
+    parser.add_argument("--chunk-size", type=int, default=None,
+                       help="Process data in chunks (useful for large datasets)")
+    parser.add_argument("--compression", type=str, default='gzip',
+                       choices=['gzip', 'snappy', 'lz4', 'brotli'],
+                       help="Compression method for saving datasets")
     
     args = parser.parse_args()
     
@@ -408,6 +441,15 @@ def main():
         args.main_size_gb = 0.1  # Small dataset for quick testing
         args.cross_validation = False
         print("🚀 Quick mode activated: small dataset, no cross-validation")
+    
+    # Low memory mode settings
+    if args.low_memory:
+        args.n_jobs = 1  # Single core processing
+        args.main_size_gb = min(args.main_size_gb, 0.05)  # Very small dataset
+        args.sea_state_size_gb = min(args.sea_state_size_gb, 0.02)  # Tiny sea state datasets
+        args.cross_validation = False
+        args.chunk_size = 10000  # Process in small chunks
+        print("💾 Low memory mode activated: minimal resources, single-core processing")
     
     # Full mode settings
     if args.full:
